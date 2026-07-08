@@ -45,9 +45,20 @@ def run(args, check=True):
         print(r.stdout.strip())
     if r.returncode != 0:
         print(r.stderr.strip(), file=sys.stderr)
+        # Grid endpoints (harness:*) have returned server errors; do NOT abort the
+        # whole publish. The evidence lives in convex as simulation runs; the grid
+        # upsert is idempotent, so a later re-run publishes cleanly once the
+        # endpoint recovers. Signal failure to the caller instead of raising.
         if check:
-            raise SystemExit(f"command failed: {' '.join(args)}")
+            raise _CmdFailed(" ".join(args), r.stderr.strip())
     return r
+
+
+class _CmdFailed(Exception):
+    def __init__(self, cmd, err):
+        super().__init__(cmd)
+        self.cmd = cmd
+        self.err = err
 
 
 def spec_rel(path):
@@ -63,6 +74,7 @@ def main():
         areas[a["key"]] = (a, ap)
 
     published = []
+    failed = []
     for pp in glob.glob(os.path.join(ROOT, "promises", "*.md")):
         if os.path.basename(pp).startswith("_"):
             continue
@@ -72,33 +84,44 @@ def main():
             continue
         area_key = p["area"]
         a, ap = areas[area_key]
-        run(["wio", "areas", "set", "--project", PROJECT, "--key", area_key,
-             "--spec-path", spec_rel(ap), "--title", a["title"],
-             "--summary", a.get("description", "")])
-        run(["wio", "promises", "set", "--project", PROJECT, "--key", p["key"],
-             "--area", area_key, "--spec-path", spec_rel(pp), "--title", p["title"],
-             "--statement", p["claim"].strip(),
-             "--invariant-prefix", p.get("invariant_prefix", p["key"])])
-        for e in done:
-            fault = (e.get("faults") or ["baseline"])
-            fault_model = fault[0] if fault else "baseline"
-            run(["wio", "rungs", "set", "--project", PROJECT, "--key", e["key"],
-                 "--promise", p["key"], "--spec-path", spec_rel(pp),
-                 "--title", e["title"], "--fault-model", fault_model,
-                 "--workload-path", e.get("workload", "")])
-            result = e.get("result")
-            cli_result = "finding" if result == "finding" else "green"
-            run_id = (e.get("replay") or {}).get("run")
-            args = ["wio", "rungs", "build-done", "--project", PROJECT,
-                    "--key", e["key"], "--result", cli_result]
-            if run_id:
-                args += ["--run-id", str(run_id)]
-            run(args)
-            published.append((e["key"], cli_result, run_id))
+        try:
+            run(["wio", "areas", "set", "--project", PROJECT, "--key", area_key,
+                 "--spec-path", spec_rel(ap), "--title", a["title"],
+                 "--summary", a.get("description", "")])
+            run(["wio", "promises", "set", "--project", PROJECT, "--key", p["key"],
+                 "--area", area_key, "--spec-path", spec_rel(pp), "--title", p["title"],
+                 "--statement", p["claim"].strip(),
+                 "--invariant-prefix", p.get("invariant_prefix", p["key"])])
+            for e in done:
+                fault = (e.get("faults") or ["baseline"])
+                fault_model = fault[0] if fault else "baseline"
+                run(["wio", "rungs", "set", "--project", PROJECT, "--key", e["key"],
+                     "--promise", p["key"], "--spec-path", spec_rel(pp),
+                     "--title", e["title"], "--fault-model", fault_model,
+                     "--workload-path", e.get("workload", "")])
+                result = e.get("result")
+                cli_result = "finding" if result == "finding" else "green"
+                run_id = (e.get("replay") or {}).get("run")
+                args = ["wio", "rungs", "build-done", "--project", PROJECT,
+                        "--key", e["key"], "--result", cli_result]
+                if run_id:
+                    args += ["--run-id", str(run_id)]
+                run(args)
+                published.append((e["key"], cli_result, run_id))
+        except _CmdFailed as cf:
+            # Grid backend down — leave these explorations published:pending for a
+            # later idempotent re-run. Do not lose the rest of the corpus.
+            failed.append((p["key"], cf.err))
+            print(f"  ! grid publish failed for promise {p['key']}: {cf.err}",
+                  file=sys.stderr)
 
     print("\nPublished:")
     for k, r, rid in published:
         print(f"  {k}: {r} run={rid}")
+    if failed:
+        print("\nPENDING (grid endpoint error — re-run publish.py when it recovers):")
+        for k, err in failed:
+            print(f"  {k}: {err}")
 
 
 if __name__ == "__main__":

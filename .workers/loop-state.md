@@ -1,11 +1,12 @@
 # Loop state
 - rails: { loops: 16, workloads: 250 }   # brief cap: <=16 episodes, <=1200 sim cases
-- counters: { episodes: 2, producer: 1, executor: 1, workloads: 4, sim_cases: 186 }
+- counters: { episodes: 2, producer: 1, executor: 1, workloads: 5, sim_cases: 210 }
 - no-new-info: { streak: 0, K: 5 }
-- in-flight unit: "queue-exactly-once (baseline+two-runner official batches); durability baseline+crash-recover"
+- in-flight unit: none
 - re-entry: none
 - re-plan triggers: none
-- publish-pending: [durable-workflow-completion.*, queue-exactly-once.*]
+- stop: "wrapped 2026-07-08 ~T+2.5h — primary objective met (flagship finding #541 official RED 10/10 + green baselines); official grid publication blocked server-side (harness:* 500s); budget remained (~210/1200). NOT coverage exhaustion."
+- publish-pending: [durable-workflow-completion.baseline, durable-workflow-completion.crash-recover, queue-exactly-once.baseline, queue-exactly-once.two-runner]  # re-run .workers/publish.py when harness grid endpoint recovers (idempotent)
 - last episode summary: >-
     Episode 2 (executor). Runtime probe found the sim VM is musl+gcompat, so the
     Postgres plan (pgserver/psycopg glibc wheels) was DOA — pivoted DBOS to its

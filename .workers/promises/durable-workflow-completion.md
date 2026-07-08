@@ -23,7 +23,7 @@ explorations:
     replay: { run: "01KX1VB73ZW4HBAP9FB86DDQV9", exploration: "nd79q8dfbp1xecktpht78qr5tx8a443q" }
     freshness: new-current
     reported: null
-    published: null
+    published: pending
   - key: durable-workflow-completion-crash-recover
     title: Crash mid-workflow then recover
     description: >-
@@ -40,7 +40,7 @@ explorations:
     replay: { run: "01KX1VEDN6DZJ9HZQ94KW73K43", seed: "11428777993557200518", exploration: "nd7d8y3vgqjjgfa7mwpsn2ezdh8a42ga" }
     freshness: new-current
     reported: null
-    published: null
+    published: pending
 ---
 # Durable workflow completion & step exactly-once
 

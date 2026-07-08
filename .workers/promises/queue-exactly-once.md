@@ -23,12 +23,12 @@ explorations:
     replay: { run: "01KX1VZYXMTP8PHE79735R1C6X", exploration: "nd7bw7wrpj5bgk2tvmr3e08hbs8a5c02" }
     freshness: new-current
     reported: null
-    published: null
+    published: pending
   - key: queue-exactly-once-two-runner
     title: Multi-runner double-dequeue (issue #541 config)
     description: >-
-      K=5 independent runner processes, each a distinct executor_id (worker-<pid>),
-      race one `bar` queue with worker_concurrency=1 over N enqueued workflows —
+      K=4 independent runner processes, each a distinct executor_id (worker-<pid>),
+      race one `bar` queue with worker_concurrency=1 over N=120 enqueued workflows —
       the exact configuration of dbos-inc issue #541. The dequeue is
       SELECT(status=ENQUEUED)-then-UPDATE(->PENDING) and the `for_update
       skip_locked` row lock is a no-op on SQLite; #564's fix only sets pysqlite
@@ -36,17 +36,17 @@ explorations:
       first DML, not before the SELECT). So two runners' dequeue SELECTs can both
       observe the same ENQUEUED row and both execute it. Oracle: every task runs
       exactly once (no duplicates) and none is lost.
-    status: ready
-    result: null
-    reason: null
+    status: done
+    result: finding
+    reason: "FINDING: 10/10 seeds RED on musl/SQLite. Every seed showed 28-42 tasks executed 2-4x (total execs 132-146 vs 120 enqueued) AND 14-32 tasks lost (distinct 88-106/120). #541's two-runner double-dequeue survives #564's isolation fix."
     workload: .workers/workloads/queue_limits.py
     command: "QL_NTASKS=120 QL_NWORKERS=4 QL_DRAIN_TIMEOUT=250 .workers/pyrun .workers/workloads/queue_limits.py deq-attack"
     faults: [concurrent-runners]
     depth: 10
-    replay: null
+    replay: { run: "01KX1Y4NVX0J7JEQB3KS8NGVS7", seed: "1587603904490932047", exploration: "nd78x31xeea1gcfnr8zb04nba18a4h0e" }
     freshness: new-current
     reported: null
-    published: null
+    published: pending
 ---
 # Queue dequeue is exactly-once across concurrent runners (SQLite)
 
@@ -90,13 +90,17 @@ O_APPEND writes, cross-process safe). After the queue drains:
 execution; `qexactly.exactly_once` goes RED (verified locally). Confirms the
 oracle bites before any green or red is trusted.
 
-## Finding (reproduced locally on the fixed checkout)
-With the issue's canonical config (K=5 runners, distinct executor_ids,
-worker_concurrency=1, N=120) the attack reproduces RED reliably against HEAD
-*with #564 present*: repeated trials showed 120 distinct tasks but 123–125 total
-executions (3–5 tasks each run twice). i.e. **#564 did not fully fix #541** — the
-SQLite two-runner double-dequeue survives, because the IMMEDIATE isolation is not
-held across the dequeue SELECT.
+## Finding (official RED, 10/10 seeds on the fixed checkout)
+Batch `nd78x31xeea1gcfnr8zb04nba18a4h0e` (depth 10, K=4 runners,
+worker_concurrency=1, N=120) went **RED on all 10 seeds** against HEAD *with #564
+present*. Replay run `01KX1Y4NVX0J7JEQB3KS8NGVS7` (seed 1587603904490932047):
+`distinct=102 total_executions=146 num_duplicated=39`. Across the 10 seeds, 28–42
+tasks each ran 2–4× (total executions 132–146 vs 120 enqueued) and 14–32 tasks
+were lost (distinct 88–106/120). i.e. **#564 did not fully fix #541** — the SQLite
+two-runner double-dequeue survives, because the IMMEDIATE isolation is not held
+across the dequeue SELECT. The single-runner baseline is GREEN, isolating the
+defect to the concurrent-dequeue path. (Also reproduced locally, 1–5 dups/run;
+the slower musl VM widens the SELECT race window, so cloud reds are far larger.)
 
 ## Workload plan
 Single file `queue_limits.py`, case selector (`deq-baseline` | `deq-attack` |

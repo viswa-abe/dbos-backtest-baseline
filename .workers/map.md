@@ -48,4 +48,4 @@ Factual evidence index. Not a queue: no owner/claim/priority/next-action columns
 
 | Finding | Promise | Exploration | Run ids | Evidence |
 |---|---|---|---|---|
-| SQLite two-runner double-dequeue (#541 not fully fixed by #564) | queue-exactly-once | queue-exactly-once-two-runner | _(pending official run)_ | local RED: 120 distinct tasks, 123–125 executions, 3–5 double-run; `qexactly.exactly_once` FAIL |
+| SQLite two-runner double-dequeue (#541 not fully fixed by #564) | queue-exactly-once | queue-exactly-once-two-runner | batch nd78x31x; replay 01KX1Y4NVX0J7JEQB3KS8NGVS7 (seed 1587603904490932047) | **official RED 10/10 seeds**: 28-42 tasks run 2-4x (total exec 132-146 vs 120), 14-32 lost; `qexactly.exactly_once` + `qexactly.no_task_lost` FAIL. Baseline (1 runner) GREEN. |
