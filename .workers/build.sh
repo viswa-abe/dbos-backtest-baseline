@@ -1,83 +1,81 @@
 #!/bin/sh
-# POSIX sh (the prepare harness runs this with /bin/sh, not bash).
-set -eu
+# POSIX sh (prepare runs this with /bin/sh). Diagnostic + provisioning build.
+# All progress goes to stderr (that is what the prepare log preview captures).
+# We do NOT use `set -e`: every step reports its own rc so a failure is legible
+# in the build log instead of aborting silently.
 
-# Workload-harness build for dbos-transact-py.
-# Provisions a self-contained runtime: a Python env with the DBOS runtime deps
-# + an embedded PostgreSQL (pgserver, which vendors PG 16 binaries), plus a
-# no-op `uuid-ossp` shim so the DBOS system-DB migration's
-# `CREATE EXTENSION "uuid-ossp"` succeeds (DBOS never calls uuid_generate_*; it
-# uses the built-in gen_random_uuid()). DBOS itself is imported from the repo
-# tree (the source under test), not pip-installed.
-#
-# Runtime entrypoint is `.workers/pyrun` (written below): it execs the resolved
-# python so workload commands are stable regardless of venv availability.
+log() { echo "[build] $*" >&2; }
 
 ROOT=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
-echo "[build] repo root: $ROOT"
+log "repo root: $ROOT"
+log "uname: $(uname -a 2>&1)"
+log "id: $(id 2>&1)"
+log "shell: $0"
 
 PY=$(command -v python3 || true)
+log "python3: ${PY:-MISSING}"
 if [ -z "$PY" ]; then
-  echo "[build] FATAL: python3 not found"; exit 1
+  log "FATAL python3 not found; PATH=$PATH"
+  log "ls /usr/bin/python*: $(ls /usr/bin/python* 2>&1)"
+  exit 1
 fi
-echo "[build] python3: $PY"; "$PY" --version
+log "python version: $("$PY" --version 2>&1)"
+"$PY" -m pip --version >&2 2>&1; log "pip rc=$?"
 
 VENV="$ROOT/.workers/venv"
-PYEXE=""
-if "$PY" -m venv "$VENV" >/dev/null 2>&1; then
+PYEXE="$PY"
+if "$PY" -m venv "$VENV" >&2 2>&1; then
   PYEXE="$VENV/bin/python3"
-  "$PYEXE" -m pip install --quiet --upgrade pip || true
-  echo "[build] using venv at $VENV"
+  "$PYEXE" -m pip install --upgrade pip >&2 2>&1; log "venv pip upgrade rc=$?"
+  log "using venv python: $PYEXE"
 else
-  echo "[build] venv unavailable; installing into system/user site"
-  PYEXE="$PY"
+  log "venv unavailable (rc=$?); using system python: $PYEXE"
 fi
 
-pip_install() {
-  # try plain, then --user, then --break-system-packages (PEP 668 images)
-  "$PYEXE" -m pip install --quiet "$@" \
-    || "$PYEXE" -m pip install --quiet --user "$@" \
-    || "$PYEXE" -m pip install --quiet --break-system-packages "$@"
-}
-
-echo "[build] installing DBOS runtime deps + embedded postgres"
-pip_install \
-  "pyyaml>=6.0.2" \
-  "python-dateutil>=2.9.0.post0" \
-  "psycopg[binary]>=3.1" \
-  "websockets>=14.0" \
-  "typer-slim>=0.17.4" \
-  "sqlalchemy>=2.0.43" \
-  "pgserver"
-
-echo "[build] locating pgserver extension dir + installing uuid-ossp shim"
-EXTDIR=$("$PYEXE" -c 'import os,pgserver;print(os.path.join(os.path.dirname(pgserver.__file__),"pginstall","share","postgresql","extension"))')
-echo "[build] extension dir: $EXTDIR"
-if [ ! -f "$EXTDIR/uuid-ossp.control" ]; then
-  printf "comment = 'no-op shim: DBOS uses built-in gen_random_uuid()'\ndefault_version = '1.1'\nrelocatable = true\n" > "$EXTDIR/uuid-ossp.control"
-  printf -- "-- no-op shim; DBOS never calls uuid_generate_*, only built-in gen_random_uuid()\n" > "$EXTDIR/uuid-ossp--1.1.sql"
-  echo "[build] installed uuid-ossp shim"
-else
-  echo "[build] uuid-ossp already present"
+log "pip install deps + pgserver (this needs build-time network)"
+"$PYEXE" -m pip install \
+  "pyyaml>=6.0.2" "python-dateutil>=2.9.0.post0" "psycopg[binary]>=3.1" \
+  "websockets>=14.0" "typer-slim>=0.17.4" "sqlalchemy>=2.0.43" "pgserver" >&2 2>&1
+RC=$?
+log "pip install rc=$RC"
+if [ "$RC" -ne 0 ]; then
+  log "retry with --break-system-packages"
+  "$PYEXE" -m pip install --break-system-packages \
+    "pyyaml>=6.0.2" "python-dateutil>=2.9.0.post0" "psycopg[binary]>=3.1" \
+    "websockets>=14.0" "typer-slim>=0.17.4" "sqlalchemy>=2.0.43" "pgserver" >&2 2>&1
+  RC=$?
+  log "pip install (break-system) rc=$RC"
+fi
+if [ "$RC" -ne 0 ]; then
+  log "FATAL pip install failed"
+  exit 1
 fi
 
-echo "[build] writing .workers/pyrun launcher"
-cat > "$ROOT/.workers/pyrun" <<PYRUN
+log "installing uuid-ossp shim"
+EXTDIR=$("$PYEXE" -c 'import os,pgserver;print(os.path.join(os.path.dirname(pgserver.__file__),"pginstall","share","postgresql","extension"))' 2>>/dev/stderr)
+log "extension dir: $EXTDIR"
+if [ -n "$EXTDIR" ] && [ ! -f "$EXTDIR/uuid-ossp.control" ]; then
+  printf "comment = 'no-op shim'\ndefault_version = '1.1'\nrelocatable = true\n" > "$EXTDIR/uuid-ossp.control"
+  printf -- "-- no-op shim; DBOS uses built-in gen_random_uuid()\n" > "$EXTDIR/uuid-ossp--1.1.sql"
+  log "shim installed"
+fi
+
+log "writing .workers/pyrun launcher"
+cat > "$ROOT/.workers/pyrun" <<'PYRUN'
 #!/bin/sh
-DIR=\$(CDPATH= cd "\$(dirname "\$0")" && pwd)
-if [ -x "\$DIR/venv/bin/python3" ]; then
-  exec "\$DIR/venv/bin/python3" "\$@"
-fi
-exec python3 "\$@"
+DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
+if [ -x "$DIR/venv/bin/python3" ]; then exec "$DIR/venv/bin/python3" "$@"; fi
+exec python3 "$@"
 PYRUN
 chmod +x "$ROOT/.workers/pyrun"
 
-echo "[build] smoke import (dbos from repo tree + pgserver)"
+log "smoke import (dbos from repo tree + pgserver)"
 cd "$ROOT"
-"$PYEXE" -c 'import sys; sys.path.insert(0,".");
-import pgserver
-import dbos
+"$PYEXE" -c 'import sys; sys.path.insert(0,".")
+import pgserver, dbos
 from dbos import DBOS, DBOSConfig, Queue
-print("[build] dbos + pgserver import OK", dbos.__file__)'
-
-echo "[build] done"
+print("[build] dbos+pgserver import OK", dbos.__file__)' >&2 2>&1
+RC=$?
+log "smoke rc=$RC"
+[ "$RC" -eq 0 ] || { log "FATAL smoke import failed"; exit 1; }
+log "done OK"
