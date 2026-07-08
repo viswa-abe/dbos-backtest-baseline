@@ -56,10 +56,11 @@ committed (double side effect), or (c) produces a different / missing result.
   `DBOS._recover_pending_workflows(["local"])`.
 
 ## Oracle (effects ledger, independent of DBOS bookkeeping)
-Each step inserts a row into `wio_effects`. Invariants:
-- `durability.step_one_exactly_once` — step_one row count == 1 after recovery
+Each step appends its label to a plain append-only ledger file (atomic O_APPEND
+writes), counted without touching DBOS bookkeeping. Invariants:
+- `durability.step_one_exactly_once` — step_one count == 1 after recovery
   (checkpointed step not re-run).
-- `durability.step_two_exactly_once` — step_two row count == 1 (runs once on
+- `durability.step_two_exactly_once` — step_two count == 1 (runs once on
   recovery; never ran before the crash).
 - `durability.result_stable` — retrieved result == 15.
 - `durability.status_success` — final workflow status SUCCESS.

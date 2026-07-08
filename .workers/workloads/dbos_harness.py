@@ -1,36 +1,39 @@
 """Shared harness for DBOS workload cases.
 
-Design (single-command, self-contained; the wio guest runs ONE command per
-simulation case):
+Runtime reality (learned from a probe run): the wio simulation VM is musl +
+gcompat, so glibc C-extension wheels (psutil, pgserver's bundled Postgres,
+psycopg[binary]) fail to load (`mallinfo` symbol not found). Pure-Python code
+runs fine. DBOS therefore runs against its first-class **SQLite** system-DB
+backend here (stdlib `sqlite3`, compiled into the python binary + pure-Python
+SQLAlchemy). The Postgres locking path (`FOR UPDATE ... SKIP LOCKED`) is a no-op
+on SQLite (dbos/_sys_db.py:2078); mutual exclusion instead rests on SQLite
+IMMEDIATE transactions (dbos/_sys_db_sqlite.py) — a recently-churned surface
+(#541/#553/#559/#564) and a high-value target for exactly-once dequeue.
 
-  * An embedded PostgreSQL is started once per run under /tmp (mutable; the
-    repo tree is read-only in the guest). pgserver vendors the PG 16 binaries.
-  * The controller (the workload's main) drives the SUT lifecycle itself:
-    it spawns DBOS "executor" subprocesses, SIGKILLs them mid-workflow to
-    simulate crashes, and starts recovery executors. Process-level faults are
-    the workload's own subprocess calls (per the executor playbook).
-  * Oracles are checked against an application-DB "effects" ledger that is
-    independent of DBOS's own bookkeeping: every observable side effect inserts
-    a row, so exactly-once / at-least-once violations are directly countable.
-  * Evidence channel is stdout. Each oracle clause prints exactly one
-    `INVARIANT <id> <name> PASS|FAIL <summary>` line. Exit code is the verdict
-    (0 green, 1 red finding, 2 setup/harness error -> not a product finding).
+Design (single-command, self-contained; the guest runs ONE command per case):
+  * A single shared SQLite FILE under /tmp is the system + application DB, so
+    independent executor PROCESSES coordinate through it.
+  * The controller drives the SUT lifecycle: spawns DBOS executor subprocesses,
+    SIGKILLs them mid-workflow (os._exit) to simulate crashes, starts recovery
+    executors. Process faults are the workload's own subprocess calls.
+  * Oracles use an application-independent, append-only effects ledger (a plain
+    file, atomic O_APPEND writes) so exactly-once / overlap violations are
+    directly countable without touching DBOS bookkeeping.
+  * Evidence channel is stdout: one `INVARIANT <id> <name> PASS|FAIL <summary>`
+    line per oracle clause; exit code is the verdict (0 green, 1 red, 2 setup).
 
-  Seed: no seed env var reaches the guest, so we derive one from os.urandom
-  (deterministic per run inside the sim), print it first as the replay key.
+  Seed: no seed env var reaches the guest, so we derive one from os.urandom and
+  print it first as the replay key.
 """
 import os
 import sys
 import time
 import subprocess
 
-# Import the DBOS under test from the repo tree (this checkout is the SUT).
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.abspath(os.path.join(_HERE, "..", ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
-
-_PG_SINGLETON = {}
 
 
 def derive_seed():
@@ -39,78 +42,89 @@ def derive_seed():
     return s
 
 
-def _pgdata():
-    d = os.environ.get("WIO_PGDATA", "/tmp/dbos_pg")
+# ---- database ------------------------------------------------------------
+
+def _statedir():
+    d = os.environ.get("WIO_STATE", "/tmp/wio_dbos")
     os.makedirs(d, exist_ok=True)
     return d
 
 
-def start_pg():
-    """Start (or reuse) the embedded postgres, return its base URI."""
-    if "uri" in _PG_SINGLETON:
-        return _PG_SINGLETON["uri"]
-    import pgserver
-
-    srv = pgserver.get_server(_pgdata())
-    uri = srv.get_uri()
-    _PG_SINGLETON["srv"] = srv
-    _PG_SINGLETON["uri"] = uri
-    return uri
+def start_db(name="wio"):
+    """Return the SQLite system/app DB URL (a shared file so processes join)."""
+    path = os.path.join(_statedir(), f"{name}.sqlite")
+    return f"sqlite:///{path}"
 
 
-def make_config(uri, name="wio"):
+def make_config(url, name="wio", executor_id=None):
     from dbos import DBOSConfig
 
     cfg: "DBOSConfig" = {
         "name": name,
-        "system_database_url": uri,
-        "application_database_url": uri,
+        "system_database_url": url,
+        "application_database_url": url,
         "run_admin_server": False,
         "log_level": os.environ.get("DBOS_LOG_LEVEL", "WARNING"),
     }
+    # A distinct executor_id per PROCESS is how real DBOS clusters identify
+    # runners (issue #541's own repro uses worker-<pid>). Without it every
+    # process shares "local" and the per-executor concurrency accounting
+    # collapses — so the attack must set it to be a faithful multi-runner test.
+    if executor_id is not None:
+        cfg["executor_id"] = executor_id
     return cfg
 
 
-# ---- application-DB effects ledger (oracle substrate) --------------------
+# ---- append-only effects ledger (oracle substrate) ----------------------
 
-def ensure_effects_table(uri):
-    import psycopg
-
-    with psycopg.connect(_libpq(uri), autocommit=True) as c:
-        c.execute(
-            """CREATE TABLE IF NOT EXISTS wio_effects(
-                   id BIGSERIAL PRIMARY KEY,
-                   scope TEXT NOT NULL,
-                   label TEXT NOT NULL,
-                   ts DOUBLE PRECISION NOT NULL DEFAULT extract(epoch from clock_timestamp())
-               )"""
-        )
+def _ledger():
+    return os.path.join(_statedir(), "effects.tsv")
 
 
-def record_effect(uri, scope, label):
-    import psycopg
-
-    with psycopg.connect(_libpq(uri), autocommit=True) as c:
-        c.execute(
-            "INSERT INTO wio_effects(scope, label) VALUES (%s, %s)", (scope, label)
-        )
-
-
-def effect_counts(uri, scope):
-    import psycopg
-
-    with psycopg.connect(_libpq(uri), autocommit=True) as c:
-        rows = c.execute(
-            "SELECT label, COUNT(*) FROM wio_effects WHERE scope=%s GROUP BY label",
-            (scope,),
-        ).fetchall()
-    return {label: n for (label, n) in rows}
+def record_effect(scope, label):
+    """Atomically append one effect row. O_APPEND writes < PIPE_BUF are atomic
+    across processes on Linux, so concurrent executors never interleave."""
+    line = f"{scope}\t{label}\t{time.time():.6f}\n".encode()
+    fd = os.open(_ledger(), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        os.write(fd, line)
+    finally:
+        os.close(fd)
 
 
-def _libpq(uri):
-    """pgserver hands back a SQLAlchemy-style URI; psycopg wants libpq form.
-    Both accept the postgresql://.../db?host=/sock shape, so pass through."""
-    return uri
+def _read_ledger(scope):
+    rows = []
+    try:
+        with open(_ledger()) as f:
+            for ln in f:
+                parts = ln.rstrip("\n").split("\t")
+                if len(parts) == 3 and parts[0] == scope:
+                    rows.append((parts[1], float(parts[2])))
+    except FileNotFoundError:
+        pass
+    return rows
+
+
+def effect_counts(scope):
+    counts = {}
+    for label, _ts in _read_ledger(scope):
+        counts[label] = counts.get(label, 0) + 1
+    return counts
+
+
+def fetch_events(scope, kind):
+    """Return sorted [(label, ts)] for effects whose label starts with kind+':'."""
+    pref = kind + ":"
+    ev = [(l, t) for (l, t) in _read_ledger(scope) if l.startswith(pref)]
+    ev.sort(key=lambda x: x[1])
+    return ev
+
+
+def reset_ledger():
+    try:
+        os.remove(_ledger())
+    except FileNotFoundError:
+        pass
 
 
 # ---- invariant reporting -------------------------------------------------
@@ -122,10 +136,9 @@ class Oracle:
 
     def check(self, inv_id, name, ok, summary):
         self.n += 1
-        verdict = "PASS" if ok else "FAIL"
         if not ok:
             self.failed += 1
-        print(f"INVARIANT {inv_id} {name} {verdict} {summary}", flush=True)
+        print(f"INVARIANT {inv_id} {name} {'PASS' if ok else 'FAIL'} {summary}", flush=True)
 
     def verdict_exit(self):
         if self.failed:
@@ -133,15 +146,3 @@ class Oracle:
             sys.exit(1)
         print(f"VERDICT GREEN {self.n} invariants held", flush=True)
         sys.exit(0)
-
-
-# ---- subprocess orchestration -------------------------------------------
-
-def spawn_worker(script_path, mode, env_extra, wait=False):
-    env = dict(os.environ)
-    env["WIO_WORKER_MODE"] = mode
-    env.update({k: str(v) for k, v in env_extra.items()})
-    p = subprocess.Popen([sys.executable, script_path], env=env)
-    if wait:
-        p.wait()
-    return p
