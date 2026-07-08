@@ -31,7 +31,8 @@ if [ -z "$PY" ]; then
     yum install -y python3.11 python3.11-pip >&2 2>&1; log "yum python3.11 rc=$?"
   elif command -v apt-get >/dev/null 2>&1; then
     apt-get update >&2 2>&1
-    apt-get install -y python3.11 python3.11-venv python3-pip >&2 2>&1; log "apt python3.11 rc=$?"
+    # Ubuntu Noble ships python3.12 as `python3` (>=3.10). Use generic names.
+    apt-get install -y python3 python3-venv python3-pip >&2 2>&1; log "apt python3 rc=$?"
   elif command -v apk >/dev/null 2>&1; then
     apk add --no-cache python3 py3-pip >&2 2>&1; log "apk python3 rc=$?"
   else
