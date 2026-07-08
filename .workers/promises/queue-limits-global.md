@@ -17,7 +17,7 @@ explorations:
     result: null
     reason: null
     workload: .workers/workloads/queue_limits.py
-    command: "QL_HOLD=0.05 .workers/venv/bin/python3 .workers/workloads/queue_limits.py rl-baseline"
+    command: "QL_HOLD=0.05 .workers/pyrun .workers/workloads/queue_limits.py rl-baseline"
     faults: []
     depth: 6
     replay: null
@@ -36,7 +36,7 @@ explorations:
     result: null
     reason: null
     workload: .workers/workloads/queue_limits.py
-    command: "QL_HOLD=0.05 .workers/venv/bin/python3 .workers/workloads/queue_limits.py rl-attack"
+    command: "QL_HOLD=0.05 .workers/pyrun .workers/workloads/queue_limits.py rl-attack"
     faults: []
     depth: 12
     replay: null
@@ -52,7 +52,7 @@ explorations:
     result: null
     reason: null
     workload: .workers/workloads/queue_limits.py
-    command: ".workers/venv/bin/python3 .workers/workloads/queue_limits.py conc-attack"
+    command: ".workers/pyrun .workers/workloads/queue_limits.py conc-attack"
     faults: []
     depth: 10
     replay: null

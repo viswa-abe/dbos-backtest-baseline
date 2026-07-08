@@ -17,7 +17,7 @@ explorations:
     result: null
     reason: null
     workload: .workers/workloads/wf_durability.py
-    command: ".workers/venv/bin/python3 .workers/workloads/wf_durability.py baseline"
+    command: ".workers/pyrun .workers/workloads/wf_durability.py baseline"
     faults: []
     depth: 8
     replay: null
@@ -34,7 +34,7 @@ explorations:
     result: null
     reason: null
     workload: .workers/workloads/wf_durability.py
-    command: ".workers/venv/bin/python3 .workers/workloads/wf_durability.py crash-recover"
+    command: ".workers/pyrun .workers/workloads/wf_durability.py crash-recover"
     faults: []
     depth: 10
     replay: null
