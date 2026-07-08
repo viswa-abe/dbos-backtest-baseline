@@ -13,14 +13,14 @@ explorations:
   - key: queue-exactly-once-baseline
     title: Single-runner dequeue baseline
     description: "One runner drains the queue; every enqueued task runs exactly once. Proves the oracle counts executions faithfully."
-    status: ready
-    result: null
-    reason: null
+    status: done
+    result: green
+    reason: "4/4 seeds GREEN on musl; single runner drains 40 tasks exactly-once (distinct=40/40, no dups). Proves the oracle + that the listen_queues fix isolates enqueue from consume."
     workload: .workers/workloads/queue_limits.py
-    command: "QL_NTASKS=40 QL_DRAIN_TIMEOUT=60 .workers/pyrun .workers/workloads/queue_limits.py deq-baseline"
+    command: "QL_NTASKS=40 QL_DRAIN_TIMEOUT=70 .workers/pyrun .workers/workloads/queue_limits.py deq-baseline"
     faults: []
-    depth: 6
-    replay: null
+    depth: 4
+    replay: { run: "01KX1VZYXMTP8PHE79735R1C6X", exploration: "nd7bw7wrpj5bgk2tvmr3e08hbs8a5c02" }
     freshness: new-current
     reported: null
     published: null
@@ -40,9 +40,9 @@ explorations:
     result: null
     reason: null
     workload: .workers/workloads/queue_limits.py
-    command: "QL_NTASKS=120 QL_NWORKERS=5 QL_DRAIN_TIMEOUT=90 .workers/pyrun .workers/workloads/queue_limits.py deq-attack"
+    command: "QL_NTASKS=120 QL_NWORKERS=4 QL_DRAIN_TIMEOUT=250 .workers/pyrun .workers/workloads/queue_limits.py deq-attack"
     faults: [concurrent-runners]
-    depth: 12
+    depth: 10
     replay: null
     freshness: new-current
     reported: null

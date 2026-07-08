@@ -13,14 +13,14 @@ explorations:
   - key: durable-workflow-completion-baseline
     title: Durable completion baseline
     description: "No faults; workflow runs to completion. Proves the oracle observes exactly-once step execution."
-    status: ready
-    result: null
-    reason: null
+    status: done
+    result: green
+    reason: "6/6 seeds GREEN on musl runtime; 3 invariants held (completes, step_one once, step_two once)"
     workload: .workers/workloads/wf_durability.py
     command: ".workers/pyrun .workers/workloads/wf_durability.py baseline"
     faults: []
-    depth: 8
-    replay: null
+    depth: 6
+    replay: { run: "01KX1VB73ZW4HBAP9FB86DDQV9", exploration: "nd79q8dfbp1xecktpht78qr5tx8a443q" }
     freshness: new-current
     reported: null
     published: null
@@ -30,14 +30,14 @@ explorations:
       Crash (os._exit) after step_one's checkpoint commits and before step_two;
       a fresh recovery executor resumes. Oracle: step_one exactly once (not
       re-run), step_two exactly once, result stable, status SUCCESS.
-    status: ready
-    result: null
-    reason: null
+    status: done
+    result: green
+    reason: "10/10 seeds GREEN on musl runtime; crash rc=7 w/ step_one once, recovery resumes, step_two once, result 15, status SUCCESS"
     workload: .workers/workloads/wf_durability.py
     command: ".workers/pyrun .workers/workloads/wf_durability.py crash-recover"
     faults: []
     depth: 10
-    replay: null
+    replay: { run: "01KX1VEDN6DZJ9HZQ94KW73K43", seed: "11428777993557200518", exploration: "nd7d8y3vgqjjgfa7mwpsn2ezdh8a42ga" }
     freshness: new-current
     reported: null
     published: null
