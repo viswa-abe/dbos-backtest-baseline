@@ -66,6 +66,11 @@ def build(executor_id):
 def enqueuer():
     from dbos import DBOS
     _dbos, q, task = build("enqueuer")
+    # Listen to NO queue: this process only enqueues, it must not consume.
+    # Without this, DBOS listens to every registered queue by default
+    # (dbos/_queue.py:199-203) and the enqueuer races its own destroy(),
+    # stealing/erroring tasks. Matches issue #541's foo/bar listen_queues split.
+    DBOS.listen_queues([])
     DBOS.launch()
     for i in range(NTASKS):
         q.enqueue(task, i)
@@ -76,6 +81,7 @@ def enqueuer():
 def runner():
     from dbos import DBOS
     _dbos, q, task = build(f"worker-{os.getpid()}")
+    DBOS.listen_queues([q])  # this process consumes the bar queue
     DBOS.launch()
     # Drain: stop once the queue has been observed empty twice in a row, or at
     # the hard deadline. list_queued_workflows returns ENQUEUED+PENDING rows.

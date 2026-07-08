@@ -1,17 +1,21 @@
 # Loop state
 - rails: { loops: 16, workloads: 250 }   # brief cap: <=16 episodes, <=1200 sim cases
-- counters: { episodes: 1, producer: 1, executor: 0, workloads: 0, sim_cases: 0 }
+- counters: { episodes: 2, producer: 1, executor: 1, workloads: 4, sim_cases: 186 }
 - no-new-info: { streak: 0, K: 5 }
-- in-flight unit: none
+- in-flight unit: "queue-exactly-once (baseline+two-runner official batches); durability baseline+crash-recover"
 - re-entry: none
 - re-plan triggers: none
-- publish-pending: []
+- publish-pending: [durable-workflow-completion.*, queue-exactly-once.*]
 - last episode summary: >-
-    Episode 1 (producer/init+backfill). Scaffolded .workers/, ran 4-scout
-    cartographer fan-out (docs/tests/issues/source). Promoted 2 promises:
-    durable-workflow-completion (durability) and queue-limits-global (queues),
-    each with ready explorations. Backlog seeded with 9 scored candidates
-    (top: sqlite-#541 parked off-directive, write-stream-from-step,
-    update-workflow-outcome-clobbers-cancelled, recovery-redequeue-double-exec).
-    Toolkit + rate-limiter finding validated locally (no cloud cases spent).
-    Next: commit+push+prepare, then executor episodes on the ready explorations.
+    Episode 2 (executor). Runtime probe found the sim VM is musl+gcompat, so the
+    Postgres plan (pgserver/psycopg glibc wheels) was DOA — pivoted DBOS to its
+    pure-Python SQLite backend, rewrote both workloads + harness, added a
+    pure-Python psycopg shim to build.sh (import dbos eagerly imports psycopg,
+    dead on SQLite). Committed 3a1a5fc, prepared (image==HEAD). Confirmed via a
+    depth-1 cloud smoke that musl `import dbos` + SQLite work. Launched official
+    batches: durability baseline d6 + crash-recover d10 (expect GREEN); queue
+    deq-baseline d6 (GREEN) + deq-attack d12 (FINDING — #541 two-runner
+    double-dequeue survives #564, reproduced RED locally 3-5 dups/run).
+    Reconciled budget: 151 pre-pivot dead-end runs were unrecorded; true Σ=186.
+    Next: collect batch verdicts, pick replay seed for the finding, set promise
+    frontmatter status:done + result + replay, run publish.py, write SUMMARY.md.
