@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "command": [
+    "/bin/sh",
+    "-c",
+    "echo 'DBOS backtest workloads require an explicit command and injected workload file' >&2; exit 64"
+  ],
+  "workingDirectory": "/workspace",
+  "timeoutSeconds": 900,
+  "outputLimitBytes": 1048576
+}
