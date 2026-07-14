@@ -7,7 +7,10 @@ from urllib.request import Request, urlopen
 
 DEMO_REPO_API = "https://api.github.com/repos/dbos-inc/dbos-demo-apps"
 PY_DEMO_PATH = "python/"
-BRANCH = "main"
+# Keep generated applications compatible with this SDK revision.  Following the
+# demo repository's moving main branch lets a template start using APIs that do
+# not exist in an already-released SDK.
+TEMPLATE_REF = "bb2109459b4f01d91bc3595dce16c0ee3efae52f"
 
 
 class GitHubTreeItem(TypedDict):
@@ -85,7 +88,7 @@ def create_template_from_github(app_name: str, template_name: str) -> None:
         f"Creating a new application named {app_name} from the template {template_name}"
     )
 
-    tree = _fetch_github_tree(BRANCH)
+    tree = _fetch_github_tree(TEMPLATE_REF)
     template_path = f"{PY_DEMO_PATH}{template_name}/"
 
     files_to_download = [

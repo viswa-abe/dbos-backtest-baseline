@@ -1,3 +1,6 @@
+from typing import Any
+
+from dbos.cli import _github_init
 from dbos.cli._template_init import get_templates_directory
 from dbos.cli.cli import _resolve_project_name_and_template
 
@@ -27,3 +30,19 @@ def test_resolve_project_name_and_template() -> None:
     )
     assert project_name == "dbos-toolbox"
     assert template == "dbos-toolbox"
+
+
+def test_github_template_uses_pinned_ref(monkeypatch: Any) -> None:
+    requested_urls: list[str] = []
+
+    def fake_fetch(url: str) -> dict[str, list[Any]]:
+        requested_urls.append(url)
+        return {"tree": []}
+
+    monkeypatch.setattr(_github_init, "_fetch_github", fake_fetch)
+
+    assert _github_init._fetch_github_tree(_github_init.TEMPLATE_REF) == []
+    assert requested_urls == [
+        f"{_github_init.DEMO_REPO_API}/git/trees/"
+        f"{_github_init.TEMPLATE_REF}?recursive=1"
+    ]
