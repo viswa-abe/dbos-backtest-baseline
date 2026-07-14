@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "command": ["/usr/bin/false"],
-  "workingDirectory": "/workspace",
+  "workingDirectory": "/workload",
   "timeoutSeconds": 900,
   "outputLimitBytes": 1048576
 }

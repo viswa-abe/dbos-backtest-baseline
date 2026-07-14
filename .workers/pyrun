@@ -1,0 +1,5 @@
+#!/bin/sh
+# The bhyve guest exports PYTHONHOME=/usr/local. Unset it so Python recognizes
+# the captured virtual environment and its site-packages.
+unset PYTHONHOME
+exec /usr/local/dbos-venv/bin/python3 "$@"

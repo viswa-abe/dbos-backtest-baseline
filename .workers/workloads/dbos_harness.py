@@ -1,14 +1,12 @@
 """Shared harness for DBOS workload cases.
 
-Runtime reality (learned from a probe run): the wio simulation VM is musl +
-gcompat, so glibc C-extension wheels (psutil, pgserver's bundled Postgres,
-psycopg[binary]) fail to load (`mallinfo` symbol not found). Pure-Python code
-runs fine. DBOS therefore runs against its first-class **SQLite** system-DB
-backend here (stdlib `sqlite3`, compiled into the python binary + pure-Python
-SQLAlchemy). The Postgres locking path (`FOR UPDATE ... SKIP LOCKED`) is a no-op
-on SQLite (dbos/_sys_db.py:2078); mutual exclusion instead rests on SQLite
-IMMEDIATE transactions (dbos/_sys_db_sqlite.py) — a recently-churned surface
-(#541/#553/#559/#564) and a high-value target for exactly-once dequeue.
+Runtime reality: the wio bhyve simulation guest is FreeBSD. Preparation builds
+Python and DBOS's pure-Python dependencies in a FreeBSD jail, then captures
+`/usr/local` for the guest. DBOS runs against its first-class **SQLite**
+system-DB backend here. The Postgres locking path (`FOR UPDATE ... SKIP LOCKED`)
+is a no-op on SQLite (dbos/_sys_db.py:2078); mutual exclusion instead rests on
+SQLite IMMEDIATE transactions (dbos/_sys_db_sqlite.py) — a recently-churned
+surface (#541/#553/#559/#564) and a high-value target for exactly-once dequeue.
 
 Design (single-command, self-contained; the guest runs ONE command per case):
   * A single shared SQLite FILE under /tmp is the system + application DB, so
@@ -22,8 +20,8 @@ Design (single-command, self-contained; the guest runs ONE command per case):
   * Evidence channel is stdout: one `INVARIANT <id> <name> PASS|FAIL <summary>`
     line per oracle clause; exit code is the verdict (0 green, 1 red, 2 setup).
 
-  Seed: no seed env var reaches the guest, so we derive one from os.urandom and
-  print it first as the replay key.
+  Seed: use the deterministic seed supplied by the bhyve guest when available,
+  and print it first as the replay key.
 """
 import os
 import sys
@@ -37,7 +35,8 @@ if _REPO not in sys.path:
 
 
 def derive_seed():
-    s = int.from_bytes(os.urandom(8), "big")
+    seed_hex = os.environ.get("WORKERS_SEED_HEX")
+    s = int(seed_hex, 16) if seed_hex else int.from_bytes(os.urandom(8), "big")
     print(f"SEED {s}", flush=True)
     return s
 
