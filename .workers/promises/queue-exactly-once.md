@@ -17,7 +17,7 @@ explorations:
     result: green
     reason: "4/4 seeds GREEN on musl; single runner drains 40 tasks exactly-once (distinct=40/40, no dups). Proves the oracle + that the listen_queues fix isolates enqueue from consume."
     workload: .workers/workloads/queue_limits.py
-    command: "QL_NTASKS=40 QL_DRAIN_TIMEOUT=70 .workers/pyrun .workers/workloads/queue_limits.py deq-baseline"
+    command: "/usr/bin/env QL_NTASKS=40 QL_DRAIN_TIMEOUT=70 .workers/pyrun .workers/workloads/queue_limits.py deq-baseline"
     faults: []
     depth: 4
     replay: { run: "01KX1VZYXMTP8PHE79735R1C6X", exploration: "nd7bw7wrpj5bgk2tvmr3e08hbs8a5c02" }
@@ -40,7 +40,7 @@ explorations:
     result: finding
     reason: "FINDING: 10/10 seeds RED on musl/SQLite. Every seed showed 28-42 tasks executed 2-4x (total execs 132-146 vs 120 enqueued) AND 14-32 tasks lost (distinct 88-106/120). #541's two-runner double-dequeue survives #564's isolation fix."
     workload: .workers/workloads/queue_limits.py
-    command: "QL_NTASKS=120 QL_NWORKERS=4 QL_DRAIN_TIMEOUT=250 .workers/pyrun .workers/workloads/queue_limits.py deq-attack"
+    command: "/usr/bin/env QL_NTASKS=120 QL_NWORKERS=4 QL_DRAIN_TIMEOUT=250 .workers/pyrun .workers/workloads/queue_limits.py deq-attack"
     faults: [concurrent-runners]
     depth: 10
     replay: { run: "01KX1Y4NVX0J7JEQB3KS8NGVS7", seed: "1587603904490932047", exploration: "nd78x31xeea1gcfnr8zb04nba18a4h0e" }
