@@ -6,11 +6,11 @@ set -eu
 log() { echo "[build] $*" >&2; }
 
 log "installing FreeBSD Python runtime"
-pkg install -y python311 py311-sqlite3 py311-pip
+pkg install -y python312 py312-sqlite3 py312-pip
 
 VENV=/usr/local/dbos-venv
 log "creating runtime environment at $VENV"
-/usr/local/bin/python3.11 -m venv --system-site-packages "$VENV"
+/usr/local/bin/python3.12 -m venv --system-site-packages "$VENV"
 
 # DBOS uses SQLite in these workloads. psycopg's native/binary driver is not
 # needed and is replaced below with the small import-compatible shim DBOS's
