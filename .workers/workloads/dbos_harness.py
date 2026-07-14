@@ -20,8 +20,9 @@ Design (single-command, self-contained; the guest runs ONE command per case):
   * Evidence channel is stdout: one `INVARIANT <id> <name> PASS|FAIL <summary>`
     line per oracle clause; exit code is the verdict (0 green, 1 red, 2 setup).
 
-  Seed: use the deterministic seed supplied by the bhyve guest when available,
-  and print it first as the replay key.
+  WIO records the per-run exploration seed outside the guest. The environment
+  available to the workload contains the snapshot's capture seed, which is
+  useful provenance but must not be mistaken for the exploration replay key.
 """
 import os
 import sys
@@ -34,11 +35,9 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 
-def derive_seed():
-    seed_hex = os.environ.get("WORKERS_SEED_HEX")
-    s = int(seed_hex, 16) if seed_hex else int.from_bytes(os.urandom(8), "big")
-    print(f"SEED {s}", flush=True)
-    return s
+def report_capture_seed():
+    seed_hex = os.environ.get("WORKERS_SEED_HEX", "unknown")
+    print(f"CAPTURE_SEED {seed_hex}", flush=True)
 
 
 # ---- database ------------------------------------------------------------

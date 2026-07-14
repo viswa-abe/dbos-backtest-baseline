@@ -111,7 +111,7 @@ def spawn_runners(n):
 
 
 def controller(case):
-    H.derive_seed()
+    H.report_capture_seed()
     H.reset_ledger()
     # fresh DB file so runs don't inherit prior enqueues
     try:

@@ -141,7 +141,7 @@ def _read_status(sf):
 
 
 def controller(case):
-    H.derive_seed()
+    H.report_capture_seed()
     diagnostics()
     H.reset_ledger()
     # Start from a pristine system DB: WFID is fixed, so a completed run left in
